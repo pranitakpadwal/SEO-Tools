@@ -3,3 +3,12 @@ dist/
 .env
 .env.local
 .DS_Store
+
+# Next.js
+.next/
+out/
+
+# Build artifacts
+*.pack
+*.pack.old
+
