@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react'
-import { Youtube, Search, Sparkles, Scissors, BarChart2, AlertCircle } from 'lucide-react'
+import { Youtube, Search, Sparkles, Scissors, BarChart2, AlertCircle, LogOut } from 'lucide-react'
 
+import ApiGate from './components/ApiGate.jsx'
 import URLInput from './components/URLInput.jsx'
 import VideoCard from './components/VideoCard.jsx'
 
@@ -23,6 +24,7 @@ const TABS = [
 ]
 
 export default function App() {
+  const [geminiKey, setGeminiKey] = useState(() => localStorage.getItem('gemini_api_key') || '')
   const [activeTab, setActiveTab] = useState('seo')
   const [loading, setLoading] = useState(false)
   const [channelLoading, setChannelLoading] = useState(false)
@@ -35,6 +37,11 @@ export default function App() {
   const [thumbnailData, setThumbnailData] = useState(null)
   const [channelData, setChannelData] = useState(null)
   const [channelInfo, setChannelInfo] = useState(null)
+
+  const handleSignOut = () => {
+    localStorage.removeItem('gemini_api_key')
+    setGeminiKey('')
+  }
 
   const handleAnalyze = useCallback(async (url) => {
     const videoId = extractVideoId(url)
@@ -55,22 +62,24 @@ export default function App() {
       const seo = analyzeSEO(data)
       setSeoAnalysis(seo)
 
-      const titles = generateTitleVariations(data.snippet?.title || '', seo.extractedKeywords)
-      const desc = generateDescription(data.snippet?.title || '', seo.extractedKeywords, data.snippet?.channelTitle || 'Your Channel')
-      const tags = generateHashtags(seo.extractedKeywords)
-      setContentData({ titles, description: desc, hashtags: tags })
-
       const shorts = analyzeShortsOpportunities(data)
       setShortsData(shorts)
-
       const thumb = analyzeThumbnail(data)
       setThumbnailData(thumb)
+
+      // AI generation — all three run in parallel using user's Gemini key
+      const [titles, desc, tags] = await Promise.all([
+        generateTitleVariations(data.snippet?.title || '', seo.extractedKeywords, geminiKey),
+        generateDescription(data.snippet?.title || '', seo.extractedKeywords, data.snippet?.channelTitle || 'Your Channel', geminiKey),
+        generateHashtags(seo.extractedKeywords, data.snippet?.title || '', geminiKey),
+      ])
+      setContentData({ titles, description: desc, hashtags: tags })
     } catch (err) {
       setError(err.message || 'Failed to fetch video data.')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [geminiKey])
 
   const handleAnalyzeChannel = useCallback(async (url) => {
     const channelId = extractChannelId(url)
@@ -94,6 +103,9 @@ export default function App() {
     }
   }, [])
 
+  // Show login gate if no Gemini key
+  if (!geminiKey) return <ApiGate onUnlock={setGeminiKey} />
+
   return (
     <div className="min-h-screen" style={{ background: 'radial-gradient(ellipse at 20% 0%, rgba(79,95,247,0.12) 0%, transparent 60%), radial-gradient(ellipse at 80% 100%, rgba(167,139,250,0.08) 0%, transparent 60%), #0a0b1a' }}>
       <header className="sticky top-0 z-50 glass border-b border-dark-400/50">
@@ -104,17 +116,21 @@ export default function App() {
             </div>
             <div>
               <span className="font-bold text-white text-sm">YouTube SEO Analyzer</span>
-              <span className="hidden sm:inline text-xs text-slate-500 ml-2">Professional B2B Video Intelligence</span>
+              <span className="hidden sm:inline text-xs text-slate-500 ml-2">Powered by Google Gemini</span>
             </div>
           </div>
-          <div className="flex items-center gap-1 text-xs text-slate-500">
-            <span className="hidden sm:inline">Powered by YouTube Data API v3</span>
-          </div>
+          <button
+            onClick={handleSignOut}
+            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 transition-colors px-3 py-1.5 rounded-lg hover:bg-dark-500/50"
+            title="Sign out / change Gemini key"
+          >
+            <LogOut className="w-3.5 h-3.5" /> Sign out
+          </button>
         </div>
       </header>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-5">
-        {/* Video URL input (shown on tabs 1–3) */}
+        {/* Video URL input (shown on tabs 1-3) */}
         {activeTab !== 'channel' && (
           <div className="glass-card p-5">
             <URLInput
@@ -122,7 +138,7 @@ export default function App() {
               loading={loading}
               placeholder="https://www.youtube.com/watch?v=... or youtu.be/..."
               label="YouTube Video URL"
-              hint="Paste any YouTube video URL to analyze SEO, generate optimized content, and find Shorts opportunities."
+              hint="Paste any YouTube video URL to analyze SEO, generate AI-optimized content, and find Shorts opportunities."
             />
             {videoData && <div className="mt-4"><VideoCard videoData={videoData} /></div>}
           </div>
@@ -180,7 +196,7 @@ export default function App() {
       </div>
 
       <footer className="border-t border-dark-400/30 mt-12 py-6 text-center text-xs text-slate-600">
-        YouTube SEO Analyzer • Professional Video Intelligence Tool • YouTube Data API v3
+        YouTube SEO Analyzer • Powered by Google Gemini + YouTube Data API v3
       </footer>
     </div>
   )
