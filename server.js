@@ -3,6 +3,7 @@ import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
 
 const app = express()
+app.use(express.json())
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const PORT = process.env.PORT || 3000
 const YT_KEY = process.env.YOUTUBE_API_KEY || ''
@@ -60,6 +61,33 @@ app.get('/api/channel-videos', async (req, res) => {
       pageToken = data.nextPageToken
     }
     res.json(allVideos)
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// Proxy: Gemini AI generation — uses the user's own Gemini API key, never stored server-side
+app.post('/api/generate', async (req, res) => {
+  try {
+    const { prompt, geminiKey } = req.body
+    if (!geminiKey) return res.status(400).json({ error: 'Missing Gemini API key.' })
+    if (!prompt) return res.status(400).json({ error: 'Missing prompt.' })
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.9, maxOutputTokens: 2048 },
+        }),
+      }
+    )
+    const data = await response.json()
+    if (data.error) return res.status(400).json({ error: data.error.message })
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+    res.json({ text })
   } catch (e) {
     res.status(500).json({ error: e.message })
   }
