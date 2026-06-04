@@ -1,10 +1,10 @@
 import React, { useState } from 'react'
-import { Key, ChevronDown, ChevronUp, Eye, EyeOff, CheckCircle } from 'lucide-react'
+import { Sparkles, ChevronDown, ChevronUp, Eye, EyeOff, CheckCircle } from 'lucide-react'
 
 export default function ApiKeyBanner({ apiKey, onSave }) {
-  const [open, setOpen] = useState(!apiKey)
+  const [open,  setOpen]  = useState(false)
   const [draft, setDraft] = useState(apiKey || '')
-  const [show, setShow] = useState(false)
+  const [show,  setShow]  = useState(false)
   const [saved, setSaved] = useState(false)
 
   const handleSave = () => {
@@ -20,10 +20,12 @@ export default function ApiKeyBanner({ apiKey, onSave }) {
         className="w-full flex items-center justify-between px-4 py-3 hover:bg-dark-500/40 transition-colors"
       >
         <div className="flex items-center gap-2">
-          <Key className="w-4 h-4 text-brand-400" />
-          <span className="text-sm font-medium text-slate-300">YouTube Data API Key</span>
-          {apiKey && <span className="tag bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">Configured</span>}
-          {!apiKey && <span className="tag bg-amber-500/15 text-amber-400 border border-amber-500/30">Required</span>}
+          <Sparkles className="w-4 h-4 text-brand-400" />
+          <span className="text-sm font-medium text-slate-300">Gemini API Key</span>
+          {apiKey
+            ? <span className="tag bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">AI Active</span>
+            : <span className="tag bg-slate-500/15 text-slate-400 border border-slate-500/30">Optional — enables AI content</span>
+          }
         </div>
         {open ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
       </button>
@@ -31,9 +33,9 @@ export default function ApiKeyBanner({ apiKey, onSave }) {
       {open && (
         <div className="px-4 pb-4 border-t border-dark-400/60 pt-3 animate-fade-in">
           <p className="text-xs text-slate-400 mb-3">
-            A YouTube Data API v3 key is required. Get one free at{' '}
-            <span className="text-brand-400">Google Cloud Console</span> under "YouTube Data API v3".
-            Your key is stored locally in your browser only.
+            Add your free Gemini API key to enable AI-generated titles, descriptions, and hashtags.
+            Get one at <span className="text-brand-400">aistudio.google.com/app/apikey</span> — it's free.
+            Your key is stored only in your browser.
           </p>
           <div className="flex gap-2">
             <div className="relative flex-1">
