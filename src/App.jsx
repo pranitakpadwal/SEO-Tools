@@ -1,8 +1,7 @@
-import React, { useState, useCallback, useEffect } from 'react'
-import { Youtube, Search, Sparkles, Scissors, BarChart2, AlertCircle, LogOut, User } from 'lucide-react'
+import React, { useState, useCallback } from 'react'
+import { Youtube, Search, Sparkles, Scissors, BarChart2, AlertCircle } from 'lucide-react'
 
-import ApiGate from './components/ApiGate.jsx'
-import SetupWizard from './components/SetupWizard.jsx'
+import GeminiKeyBanner from './components/ApiKeyBanner.jsx'
 import URLInput from './components/URLInput.jsx'
 import VideoCard from './components/VideoCard.jsx'
 
@@ -12,59 +11,20 @@ import ShortsAnalysis from './pages/ShortsAnalysis.jsx'
 import ChannelAnalytics from './pages/ChannelAnalytics.jsx'
 
 import { extractVideoId, extractChannelId, fetchVideoData, fetchChannelInfo, fetchVideosByChannel } from './utils/youtube.js'
-import { apiFetch } from './utils/apiFetch.js'
 import { analyzeSEO } from './utils/seoAnalyzer.js'
 import { generateTitleVariations, generateDescription, generateHashtags } from './utils/contentGenerator.js'
 import { analyzeShortsOpportunities, analyzeThumbnail } from './utils/shortsAnalyzer.js'
 import { analyzePublishingFrequency } from './utils/channelAnalyzer.js'
 
 const TABS = [
-  { id: 'seo',     label: 'SEO Analysis',      icon: Search   },
-  { id: 'content', label: 'Content Optimizer',  icon: Sparkles },
-  { id: 'shorts',  label: 'Shorts & Thumbnail', icon: Scissors },
-  { id: 'channel', label: 'Channel Analytics',  icon: BarChart2 },
+  { id: 'seo',     label: 'SEO Analysis',      icon: Search,    desc: 'Score & fix' },
+  { id: 'content', label: 'Content Optimizer',  icon: Sparkles,  desc: 'Titles & copy' },
+  { id: 'shorts',  label: 'Shorts & Thumbnail', icon: Scissors,  desc: 'Clip ideas' },
+  { id: 'channel', label: 'Channel Analytics',  icon: BarChart2, desc: 'Frequency report' },
 ]
 
 export default function App() {
-  // ── Session state machine: loading → gate → setup → app ──────────────────
-  const [screen, setScreen] = useState('loading')
-  const [user,   setUser]   = useState(null)
-
-  useEffect(() => {
-    const token = localStorage.getItem('session_token')
-    if (!token) { setScreen('gate'); return }
-
-    apiFetch('/auth/me')
-      .then(data => {
-        if (!data) { setScreen('gate'); return }
-        setUser(data)
-        setScreen(data.has_gemini_key ? 'app' : 'setup')
-      })
-      .catch(() => setScreen('gate'))
-  }, [])
-
-  // Listen for forced logout from apiFetch (401 anywhere in the app)
-  useEffect(() => {
-    const handler = () => { setUser(null); setScreen('gate') }
-    window.addEventListener('auth:logout', handler)
-    return () => window.removeEventListener('auth:logout', handler)
-  }, [])
-
-  function handleLogin({ hasGeminiKey }) {
-    if (hasGeminiKey) {
-      apiFetch('/auth/me').then(data => { setUser(data); setScreen('app') })
-    } else {
-      setScreen('setup')
-    }
-  }
-
-  function handleSignOut() {
-    localStorage.removeItem('session_token')
-    setUser(null)
-    setScreen('gate')
-  }
-
-  // ── Tool state ────────────────────────────────────────────────────────────
+  const [geminiKey,      setGeminiKey]      = useState(() => localStorage.getItem('gemini_api_key') || '')
   const [activeTab,      setActiveTab]      = useState('seo')
   const [loading,        setLoading]        = useState(false)
   const [channelLoading, setChannelLoading] = useState(false)
@@ -76,6 +36,11 @@ export default function App() {
   const [thumbnailData,  setThumbnailData]  = useState(null)
   const [channelData,    setChannelData]    = useState(null)
   const [channelInfo,    setChannelInfo]    = useState(null)
+
+  const saveGeminiKey = useCallback((key) => {
+    setGeminiKey(key)
+    localStorage.setItem('gemini_api_key', key)
+  }, [])
 
   const handleAnalyze = useCallback(async (url) => {
     const videoId = extractVideoId(url)
@@ -96,9 +61,9 @@ export default function App() {
       setThumbnailData(analyzeThumbnail(data))
 
       const [titles, desc, tags] = await Promise.all([
-        generateTitleVariations(data.snippet?.title || '', seo.extractedKeywords),
-        generateDescription(data.snippet?.title || '', seo.extractedKeywords, data.snippet?.channelTitle || 'Your Channel'),
-        generateHashtags(seo.extractedKeywords, data.snippet?.title || ''),
+        generateTitleVariations(data.snippet?.title || '', seo.extractedKeywords, geminiKey),
+        generateDescription(data.snippet?.title || '', seo.extractedKeywords, data.snippet?.channelTitle || 'Your Channel', geminiKey),
+        generateHashtags(seo.extractedKeywords, data.snippet?.title || '', geminiKey),
       ])
       setContentData({ titles, description: desc, hashtags: tags })
     } catch (err) {
@@ -106,7 +71,7 @@ export default function App() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [geminiKey])
 
   const handleAnalyzeChannel = useCallback(async (url) => {
     const channelId = extractChannelId(url)
@@ -129,23 +94,6 @@ export default function App() {
     }
   }, [])
 
-  // ── Screen routing ────────────────────────────────────────────────────────
-  if (screen === 'loading') return (
-    <div className="min-h-screen flex items-center justify-center"
-      style={{ background: '#0a0b1a' }}>
-      <svg className="animate-spin w-10 h-10 text-brand-400" fill="none" viewBox="0 0 24 24">
-        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z" />
-      </svg>
-    </div>
-  )
-
-  if (screen === 'gate')  return <ApiGate onLogin={handleLogin} />
-  if (screen === 'setup') return <SetupWizard user={user} onComplete={() => {
-    apiFetch('/auth/me').then(data => { setUser(data); setScreen('app') })
-  }} />
-
-  // ── Main app ──────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen" style={{ background: 'radial-gradient(ellipse at 20% 0%, rgba(79,95,247,0.12) 0%, transparent 60%), radial-gradient(ellipse at 80% 100%, rgba(167,139,250,0.08) 0%, transparent 60%), #0a0b1a' }}>
       <header className="sticky top-0 z-50 glass border-b border-dark-400/50">
@@ -154,25 +102,18 @@ export default function App() {
             <div className="w-8 h-8 rounded-lg bg-red-600 flex items-center justify-center">
               <Youtube className="w-4 h-4 text-white" />
             </div>
-            <span className="font-bold text-white text-sm">YouTube SEO Analyzer</span>
+            <div>
+              <span className="font-bold text-white text-sm">YouTube SEO Analyzer</span>
+              <span className="hidden sm:inline text-xs text-slate-500 ml-2">Professional B2B Video Intelligence</span>
+            </div>
           </div>
-          <div className="flex items-center gap-3">
-            {user?.avatar
-              ? <img src={user.avatar} alt="" className="w-7 h-7 rounded-full" />
-              : <User className="w-4 h-4 text-slate-500" />
-            }
-            <span className="hidden sm:inline text-xs text-slate-500">{user?.name || user?.email}</span>
-            <button
-              onClick={handleSignOut}
-              className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 transition-colors px-2 py-1.5 rounded-lg hover:bg-dark-500/50"
-            >
-              <LogOut className="w-3.5 h-3.5" /> Sign out
-            </button>
-          </div>
+          <span className="hidden sm:inline text-xs text-slate-500">Powered by YouTube Data API v3</span>
         </div>
       </header>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-5">
+        <GeminiKeyBanner apiKey={geminiKey} onSave={saveGeminiKey} />
+
         {activeTab !== 'channel' && (
           <div className="glass-card p-5">
             <URLInput
@@ -216,7 +157,7 @@ export default function App() {
       </div>
 
       <footer className="border-t border-dark-400/30 mt-12 py-6 text-center text-xs text-slate-600">
-        YouTube SEO Analyzer · Powered by Google Gemini + YouTube Data API v3
+        YouTube SEO Analyzer · Professional Video Intelligence Tool · YouTube Data API v3
       </footer>
     </div>
   )
