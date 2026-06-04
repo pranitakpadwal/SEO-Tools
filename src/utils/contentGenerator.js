@@ -1,26 +1,26 @@
-import { apiFetch } from './apiFetch.js'
-
 // Six distinct tone styles — one is picked randomly each analysis run
 const TONES = [
-  { name: 'Professional B2B',        instruction: 'Write in a formal, authoritative B2B tone for executives and decision-makers. Focus on ROI, strategic value, and competitive advantage.' },
+  { name: 'Professional B2B',          instruction: 'Write in a formal, authoritative B2B tone for executives and decision-makers. Focus on ROI, strategic value, and competitive advantage.' },
   { name: 'Conversational & Friendly', instruction: 'Write in a warm, friendly tone as if talking to a colleague. Use "you" frequently, keep sentences short, and be approachable.' },
-  { name: 'Storytelling & Narrative', instruction: 'Open with a compelling scenario or problem the viewer faces. Build tension, then reveal how this video solves it.' },
-  { name: 'Educational & Step-by-Step', instruction: 'Write like a knowledgeable mentor. Explain the "why" behind each point and make complex ideas easy to follow.' },
-  { name: 'Bold & Urgent',            instruction: 'Write with energy and urgency using short, powerful sentences. Create FOMO. The viewer should feel they cannot afford to miss this.' },
-  { name: 'Data-Driven & Analytical', instruction: 'Emphasize measurable outcomes, evidence, and proven frameworks. Appeal to analytical thinkers who want proof before action.' },
+  { name: 'Storytelling & Narrative',  instruction: 'Open with a compelling scenario or problem the viewer faces. Build tension, then reveal how this video solves it.' },
+  { name: 'Educational & Step-by-Step',instruction: 'Write like a knowledgeable mentor. Explain the "why" behind each point and make complex ideas easy to follow.' },
+  { name: 'Bold & Urgent',             instruction: 'Write with energy and urgency using short, powerful sentences. Create FOMO. The viewer should feel they cannot afford to miss this.' },
+  { name: 'Data-Driven & Analytical',  instruction: 'Emphasize measurable outcomes, evidence, and proven frameworks. Appeal to analytical thinkers who want proof before action.' },
 ]
 
-async function callGemini(prompt) {
-  const data = await apiFetch('/api/generate', {
+async function callGemini(prompt, geminiKey) {
+  const res = await fetch('/api/generate', {
     method: 'POST',
-    body: JSON.stringify({ prompt }),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt, geminiKey }),
   })
-  if (!data) throw new Error('Not authenticated')
+  const data = await res.json()
+  if (!res.ok) throw new Error(data?.error || 'Generation failed')
   return data.text
 }
 
-export async function generateDescription(videoTitle, keywords, channelName = 'Your Channel') {
-  const tone = TONES[Math.floor(Math.random() * TONES.length)]
+export async function generateDescription(videoTitle, keywords, channelName = 'Your Channel', geminiKey = '') {
+  const tone   = TONES[Math.floor(Math.random() * TONES.length)]
   const prompt = `You are a YouTube SEO copywriter. Write a complete, optimized YouTube video description.
 
 Video Title: "${videoTitle}"
@@ -55,13 +55,13 @@ About ${channelName}: [1-2 sentences]
 Keep total length under 1800 characters.`
 
   try {
-    return await callGemini(prompt)
+    return await callGemini(prompt, geminiKey)
   } catch {
     return fallbackDescription(videoTitle, keywords, channelName)
   }
 }
 
-export async function generateTitleVariations(originalTitle, keywords) {
+export async function generateTitleVariations(originalTitle, keywords, geminiKey = '') {
   const prompt = `You are a YouTube SEO expert. Generate 12 title variations for this video.
 
 Original Title: "${originalTitle}"
@@ -79,7 +79,7 @@ Return ONLY a valid JSON array with no other text:
 [{"type":"SEO","title":"..."},{"type":"CTR","title":"..."},{"type":"Thought Leadership","title":"..."},{"type":"Shorts Hook","title":"..."},...]`
 
   try {
-    const text  = await callGemini(prompt)
+    const text  = await callGemini(prompt, geminiKey)
     const match = text.match(/\[[\s\S]*\]/)
     if (!match) throw new Error('No JSON found')
     const parsed = JSON.parse(match[0])
@@ -89,7 +89,7 @@ Return ONLY a valid JSON array with no other text:
   }
 }
 
-export async function generateHashtags(keywords, videoTitle) {
+export async function generateHashtags(keywords, videoTitle, geminiKey = '') {
   const prompt = `Generate exactly 15 YouTube hashtags for a video titled "${videoTitle}" with keywords: ${keywords.slice(0, 6).join(', ')}.
 
 Mix: 5 niche-specific, 5 industry/category, 5 broad discovery hashtags.
@@ -98,7 +98,7 @@ Each must start with #. No spaces within a hashtag. No duplicates.
 Return ONLY a JSON array, no other text: ["#tag1","#tag2",...]`
 
   try {
-    const text  = await callGemini(prompt)
+    const text  = await callGemini(prompt, geminiKey)
     const match = text.match(/\[[\s\S]*\]/)
     if (!match) throw new Error('No JSON found')
     return JSON.parse(match[0]).slice(0, 15)
@@ -107,12 +107,12 @@ Return ONLY a JSON array, no other text: ["#tag1","#tag2",...]`
   }
 }
 
-// ── Fallback templates (used when Gemini call fails) ──────────────────────────
+// ── Fallback templates (used when Gemini call fails or no key provided) ────────
 
 function fallbackDescription(videoTitle, keywords, channelName) {
-  const kw1 = keywords[0] || 'this topic'
-  const kw2 = keywords[1] || 'strategy'
-  const kw3 = keywords[2] || 'insights'
+  const kw1  = keywords[0] || 'this topic'
+  const kw2  = keywords[1] || 'strategy'
+  const kw3  = keywords[2] || 'insights'
   const tags = fallbackHashtags(keywords).slice(0, 10).join(' ')
   return `In this video, we explore ${kw1} and how it reshapes the way professionals approach ${kw2} today.
 
@@ -149,18 +149,18 @@ function fallbackTitleVariations(originalTitle, keywords) {
   const year = new Date().getFullYear()
   const cap  = s => s.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
   return [
-    { type: 'SEO',               title: `${cap(kw1)} ${cap(kw2)}: Complete Guide [${year}]` },
-    { type: 'SEO',               title: `How to Master ${cap(kw1)}: Proven ${cap(kw2)} Framework` },
-    { type: 'SEO',               title: `${cap(kw1)} Explained: Everything You Need to Know` },
-    { type: 'CTR',               title: `7 ${cap(kw1)} Mistakes Killing Your ${cap(kw2)} (Fix These Now)` },
-    { type: 'CTR',               title: `I Tested ${cap(kw1)} for 90 Days — Here's What Actually Works` },
-    { type: 'CTR',               title: `Why 90% of ${cap(kw1)} Strategies Fail (And What to Do Instead)` },
+    { type: 'SEO',                title: `${cap(kw1)} ${cap(kw2)}: Complete Guide [${year}]` },
+    { type: 'SEO',                title: `How to Master ${cap(kw1)}: Proven ${cap(kw2)} Framework` },
+    { type: 'SEO',                title: `${cap(kw1)} Explained: Everything You Need to Know` },
+    { type: 'CTR',                title: `7 ${cap(kw1)} Mistakes Killing Your ${cap(kw2)} (Fix These Now)` },
+    { type: 'CTR',                title: `I Tested ${cap(kw1)} for 90 Days — Here's What Actually Works` },
+    { type: 'CTR',                title: `Why 90% of ${cap(kw1)} Strategies Fail (And What to Do Instead)` },
     { type: 'Thought Leadership', title: `The Future of ${cap(kw1)}: What Executives Need to Know` },
     { type: 'Thought Leadership', title: `${cap(kw1)} in ${year}: Strategic Outlook for Leaders` },
     { type: 'Thought Leadership', title: `Rethinking ${cap(kw1)}: A Data-Driven Perspective` },
-    { type: 'Shorts Hook',       title: `This ${cap(kw1)} Trick Changes Everything` },
-    { type: 'Shorts Hook',       title: `Nobody Talks About This ${cap(kw1)} Strategy` },
-    { type: 'Shorts Hook',       title: `${cap(kw1)} Secret in 60 Seconds` },
+    { type: 'Shorts Hook',        title: `This ${cap(kw1)} Trick Changes Everything` },
+    { type: 'Shorts Hook',        title: `Nobody Talks About This ${cap(kw1)} Strategy` },
+    { type: 'Shorts Hook',        title: `${cap(kw1)} Secret in 60 Seconds` },
   ].map(v => ({ ...v, chars: v.title.length, charOk: v.title.length <= 70 }))
 }
 
